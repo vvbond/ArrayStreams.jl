@@ -111,10 +111,10 @@ using LinearAlgebra
     @test first(cbiter) == ones(Int, 4, 6)*diagm(7:12)
     @test first(cbiter) == ones(Int, 4, 6)*diagm(10:15)
   end
-  @testset "Datashifter" begin
+  @testset "ArrayStream" begin
      In = Channel{Vector{Int}}(ch->foreach(i->put!(ch, ones(Int,3)*i), 1:100), 10)
      window = (width=5, hop=2)
-     Out = datashifter(In, window; size = 10)
+     Out = ArrayStream(In, window; size = 10)
      ix = 1
      for d in Out
        @test d == ones(Int, 3, window.width)*diagm(ix:ix+window.width-1)

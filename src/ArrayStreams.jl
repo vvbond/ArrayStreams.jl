@@ -1,7 +1,7 @@
 module ArrayStreams
 
 import Base: iterate, push!
-export CircularBufferArray, CircularBufferArrayIterator, datashifter
+export CircularBufferArray, CircularBufferArrayIterator, ArrayStream
 
 #%% CircularBufferArray
 mutable struct CircularBufferArray{T, N}
@@ -109,8 +109,8 @@ Base.length(iter::CircularBufferArrayIterator) = fld(min(length(iter.cb), iter.c
 wrap!(v::Vector{Int}, n::Int) = mod.(v.-1, n) .+ 1
 wrap!(v::UnitRange{Int}, n::Int) = wrap!(collect(v), n)
 
-#%% datashifter
-function datashift(src::AbstractChannel, sink::AbstractChannel, window::@NamedTuple{width::Int, hop::Int}, NDims::Int=1, f=identity)
+#%% ArrayStream
+function stream(src::AbstractChannel, sink::AbstractChannel, window::@NamedTuple{width::Int, hop::Int}, NDims::Int=1, f=identity)
   d = take!(src) |> f
   n = ndims(d) == NDims ? 1 : ndims(d) == NDims + 1 ? size(d, NDims + 1) : error("Inconsistent dimensions.")
   width = max(3n, window.width + n)
@@ -127,6 +127,6 @@ function datashift(src::AbstractChannel, sink::AbstractChannel, window::@NamedTu
     end
   end
 end
-datashifter(src::AbstractChannel, window::@NamedTuple{width::Int, hop::Int}, NDims::Int=1; size::Int=1000, f = identity, taskref=nothing) = Channel((sink)->datashift(src, sink, window, NDims, f), size; taskref)
+ArrayStream(src::AbstractChannel, window::@NamedTuple{width::Int, hop::Int}, NDims::Int=1; size::Int=1000, f = identity, taskref=nothing) = Channel((sink)->stream(src, sink, window, NDims, f), size; taskref)
 
 end
