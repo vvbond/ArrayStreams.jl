@@ -3,6 +3,8 @@ module ArrayStreams
 import Base: iterate, push!
 export CircularBufferArray, CircularBufferArrayIterator, ArrayStream
 
+const Window = @NamedTuple{length::Int, stride::Int}
+
 #%% CircularBufferArray
 mutable struct CircularBufferArray{T, N}
   width::Int
@@ -84,37 +86,44 @@ Base.lastindex(cb::CircularBufferArray) = min(cb.count, cb.width)
 #%% Iterator interface
 mutable struct CircularBufferArrayIterator
   cb::CircularBufferArray
-  window::@NamedTuple{width::Int, hop::Int}
+  window::@NamedTuple{length::Int, stride::Int}
   count::Int
   dim::Int
 end
 
-function CircularBufferArrayIterator(cb::CircularBufferArray, window::@NamedTuple{width::Int, hop::Int})
-  @assert window.width <= cb.width "Window width can't exceed the width of the buffer."
+function CircularBufferArrayIterator(cb::CircularBufferArray, window::Window)
+  @assert window.length <= cb.width "Window width can't exceed the width of the buffer."
   count = max(0, cb.count - cb.width)
   dim = length(cb.elsize)
   CircularBufferArrayIterator(cb, window, count, dim)
 end
 
 function Base.iterate(iter::CircularBufferArrayIterator, state = nothing) 
-  iter.count + iter.window.width > iter.cb.count && return nothing
-  ix = wrap!(iter.count .+ (1:iter.window.width), iter.cb.width)
+  iter.count + iter.window.length > iter.cb.count && return nothing
+  ix = wrap!(iter.count .+ (1:iter.window.length), iter.cb.width)
   D = iter.cb.data[ntuple(_->(:), iter.dim)..., ix]
-  iter.count += iter.window.hop
+  iter.count += iter.window.stride
   (D, count)
 end
 
-Base.length(iter::CircularBufferArrayIterator) = fld(min(length(iter.cb), iter.cb.count-iter.count)-iter.window.width + iter.window.hop, iter.window.hop)
+Base.length(iter::CircularBufferArrayIterator) = fld(min(length(iter.cb), iter.cb.count-iter.count)-iter.window.length + iter.window.stride, iter.window.stride)
 
 wrap!(v::Vector{Int}, n::Int) = mod.(v.-1, n) .+ 1
 wrap!(v::UnitRange{Int}, n::Int) = wrap!(collect(v), n)
 
 #%% ArrayStream
-function stream(src::AbstractChannel, sink::AbstractChannel, window::@NamedTuple{width::Int, hop::Int}, NDims::Int=1, f=identity)
+function stream(src::AbstractChannel, sink::AbstractChannel, window::Window, NDims::Int=1, f=identity)
   d = take!(src) |> f
-  n = ndims(d) == NDims ? 1 : ndims(d) == NDims + 1 ? size(d, NDims + 1) : error("Inconsistent dimensions.")
-  width = max(3n, window.width + n)
-  buffer = CircularBufferArray{eltype(d),NDims}(width)
+  n = 1
+  if isa(d, Number) || isa(d, AbstractArray{<:Number})
+      n = ndims(d) == NDims ? 1 : ndims(d) == NDims + 1 ? size(d, NDims + 1) : error("Inconsistent dimensions.")
+  elseif NDims != 0
+      warning("Non-numeric types are treated as scalars: setting NDims=0.")
+      NDims = 0
+  end
+  T = NDims == 0 ? typeof(d) : eltype(d)
+  width = max(3n, window.length + n)
+  buffer = CircularBufferArray{T,NDims}(width)
   push!(buffer, d)
   bufferitr = CircularBufferArrayIterator(buffer, window)
   for data in bufferitr
@@ -127,6 +136,6 @@ function stream(src::AbstractChannel, sink::AbstractChannel, window::@NamedTuple
     end
   end
 end
-ArrayStream(src::AbstractChannel, window::@NamedTuple{width::Int, hop::Int}, NDims::Int=1; size::Int=1000, f = identity, taskref=nothing) = Channel((sink)->stream(src, sink, window, NDims, f), size; taskref)
+ArrayStream(src::AbstractChannel, window::Window, NDims::Int=1; size::Int=1000, f = identity, taskref=nothing) = Channel((sink)->stream(src, sink, window, NDims, f), size; taskref)
 
 end

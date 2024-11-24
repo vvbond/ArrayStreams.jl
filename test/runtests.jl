@@ -98,7 +98,7 @@ using LinearAlgebra
     cb = CircularBufferArray{Int, 1}(10)
     B = ones(Int, 4, 10)*diagm(1:10)
     push!(cb, B)
-    cbiter = CircularBufferArrayIterator(cb, (width = 6, hop = 3))
+    cbiter = CircularBufferArrayIterator(cb, (length = 6, stride = 3))
     @test length(cbiter) == 2
     @test first(cbiter) == cb[][:, 1:6]
     @test length(cbiter) == 1
@@ -113,12 +113,12 @@ using LinearAlgebra
   end
   @testset "ArrayStream" begin
      In = Channel{Vector{Int}}(ch->foreach(i->put!(ch, ones(Int,3)*i), 1:100), 10)
-     window = (width=5, hop=2)
+     window = (length=5, stride=2)
      Out = ArrayStream(In, window; size = 10)
      ix = 1
      for d in Out
-       @test d == ones(Int, 3, window.width)*diagm(ix:ix+window.width-1)
-       ix += window.hop
+       @test d == ones(Int, 3, window.length)*diagm(ix:ix+window.length-1)
+       ix += window.stride
      end
   end
 end
